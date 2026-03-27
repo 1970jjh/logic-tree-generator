@@ -473,12 +473,154 @@ function TooltipModal({ data, onClose }) {
   );
 }
 
+/* ──────────────────────────── DOWNLOAD UTILS ──────────────────────────── */
+function buildTreeText(data, situation, typeMeta) {
+  const lines = [];
+  lines.push(`# ${typeMeta.title} (${typeMeta.en}) Logic Tree`);
+  lines.push("");
+  lines.push(`## 핵심 문제: ${data.root.label}`);
+  lines.push(`> ${data.root.tag}`);
+  if (situation) {
+    lines.push("");
+    lines.push(`**상황/이슈:** ${situation}`);
+  }
+  lines.push("");
+
+  data.branches.forEach((b, bi) => {
+    lines.push(`### ${b.icon} L1-${bi + 1}. ${b.label}`);
+    lines.push(`${b.description || ""}`);
+    lines.push("");
+    (b.children || []).forEach((l2, l2i) => {
+      lines.push(`#### L2-${bi + 1}.${l2i + 1}. ${l2.label}`);
+      lines.push(`${l2.description || ""}`);
+      lines.push("");
+      (l2.children || []).forEach((l3, l3i) => {
+        lines.push(`- **${l3.label}**: ${l3.description || ""}`);
+      });
+      lines.push("");
+    });
+  });
+
+  lines.push("---");
+  lines.push("© 2026 JJ CREATIVE Edu with AI. All Rights Reserved.");
+  return lines.join("\n");
+}
+
+function downloadBlob(content, filename, mimeType) {
+  const BOM = "\uFEFF";
+  const blob = new Blob([BOM + content], { type: mimeType + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadMD(data, situation, typeMeta) {
+  const md = buildTreeText(data, situation, typeMeta);
+  downloadBlob(md, `logic-tree-${typeMeta.en.replace(/\s/g, "-")}.md`, "text/markdown");
+}
+
+function downloadWord(data, situation, typeMeta) {
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Logic Tree</title>
+<style>
+body{font-family:'맑은 고딕','Malgun Gothic',sans-serif;color:#222;padding:30px 40px;line-height:1.8}
+h1{font-size:20pt;color:#4338ca;border-bottom:3px solid #6366f1;padding-bottom:8px;margin-bottom:16px}
+h2{font-size:14pt;color:#333;margin-top:20px}
+h3{font-size:12pt;color:#4338ca;margin-top:14px}
+.root-tag{background:#f0f0ff;padding:6px 12px;border-left:4px solid #6366f1;margin:8px 0 16px;font-size:11pt;color:#555}
+.situation{background:#fff8f0;padding:8px 12px;border-left:4px solid #f97316;margin-bottom:16px;font-size:10pt;color:#666}
+table{border-collapse:collapse;width:100%;margin:6px 0 14px}
+td,th{border:1px solid #d4d4d8;padding:6px 10px;font-size:10pt;text-align:left}
+th{background:#6366f1;color:#fff;font-weight:600}
+.l3-label{font-weight:600;color:#059669;white-space:nowrap}
+.footer{text-align:center;margin-top:30px;padding-top:12px;border-top:1px solid #ddd;font-size:9pt;color:#999}
+</style></head><body>`;
+
+  html += `<h1>${typeMeta.icon} ${typeMeta.title} (${typeMeta.en}) Logic Tree</h1>`;
+  html += `<h2>${data.root.label}</h2>`;
+  html += `<div class="root-tag">${data.root.tag}</div>`;
+  if (situation) html += `<div class="situation"><b>상황/이슈:</b> ${situation}</div>`;
+
+  data.branches.forEach((b, bi) => {
+    html += `<h3>${b.icon} L1-${bi + 1}. ${b.label} <span style="font-size:9pt;color:#888;font-weight:400">${b.subLabel || ""}</span></h3>`;
+    html += `<p style="font-size:10pt;color:#555">${b.description || ""}</p>`;
+
+    (b.children || []).forEach((l2, l2i) => {
+      html += `<table><tr><th colspan="2">L2-${bi + 1}.${l2i + 1}. ${l2.label} <span style="font-weight:400;font-size:9pt">${l2.subLabel || ""}</span></th></tr>`;
+      html += `<tr><td colspan="2" style="font-size:9pt;color:#555">${l2.description || ""}</td></tr>`;
+      (l2.children || []).forEach((l3) => {
+        html += `<tr><td class="l3-label" style="width:25%">${l3.label}</td><td style="font-size:9pt;color:#444">${l3.description || ""}</td></tr>`;
+      });
+      html += `</table>`;
+    });
+  });
+
+  html += `<div class="footer">© 2026 JJ CREATIVE Edu with AI. All Rights Reserved.</div>`;
+  html += `</body></html>`;
+  downloadBlob(html, `logic-tree-${typeMeta.en.replace(/\s/g, "-")}.doc`, "application/msword");
+}
+
+function downloadPDF(data, situation, typeMeta) {
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Logic Tree</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Sans KR',sans-serif;color:#1a1a2e;padding:40px 50px;line-height:1.7;background:#fff}
+h1{font-size:22px;color:#4338ca;border-bottom:3px solid #6366f1;padding-bottom:10px;margin-bottom:20px}
+h2{font-size:16px;color:#222;margin-top:6px}
+h3{font-size:14px;color:#4338ca;margin-top:18px;margin-bottom:4px}
+.root-tag{background:#f0f0ff;padding:8px 14px;border-left:4px solid #6366f1;margin:10px 0 20px;font-size:13px;color:#555}
+.situation{background:#fff8f0;padding:8px 14px;border-left:4px solid #f97316;margin-bottom:20px;font-size:12px;color:#666}
+table{border-collapse:collapse;width:100%;margin:8px 0 16px}
+td,th{border:1px solid #d4d4d8;padding:8px 12px;font-size:12px;text-align:left}
+th{background:#6366f1;color:#fff;font-weight:600}
+.l3-label{font-weight:600;color:#059669;white-space:nowrap}
+.desc{font-size:12px;color:#555;margin-bottom:6px}
+.footer{text-align:center;margin-top:40px;padding-top:14px;border-top:1px solid #ddd;font-size:10px;color:#999}
+@media print{body{padding:20px 30px}@page{margin:15mm}}
+</style></head><body>`;
+
+  html += `<h1>${typeMeta.icon} ${typeMeta.title} (${typeMeta.en}) Logic Tree</h1>`;
+  html += `<h2>${data.root.label}</h2>`;
+  html += `<div class="root-tag">${data.root.tag}</div>`;
+  if (situation) html += `<div class="situation"><b>상황/이슈:</b> ${situation}</div>`;
+
+  data.branches.forEach((b, bi) => {
+    html += `<h3>${b.icon} L1-${bi + 1}. ${b.label} <span style="font-size:11px;color:#888;font-weight:400">${b.subLabel || ""}</span></h3>`;
+    html += `<p class="desc">${b.description || ""}</p>`;
+
+    (b.children || []).forEach((l2, l2i) => {
+      html += `<table><tr><th colspan="2">L2-${bi + 1}.${l2i + 1}. ${l2.label} <span style="font-weight:400;font-size:11px">${l2.subLabel || ""}</span></th></tr>`;
+      html += `<tr><td colspan="2" style="font-size:11px;color:#555">${l2.description || ""}</td></tr>`;
+      (l2.children || []).forEach((l3) => {
+        html += `<tr><td class="l3-label" style="width:25%">${l3.label}</td><td style="font-size:11px;color:#444">${l3.description || ""}</td></tr>`;
+      });
+      html += `</table>`;
+    });
+  });
+
+  html += `<div class="footer">© 2026 JJ CREATIVE Edu with AI. All Rights Reserved.</div>`;
+  html += `</body></html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
 /* ──────────────────────────── STEP 4: TREE VIEW ──────────────────────────── */
 function LogicTreeView({ data, type, situation, onReset, onRegenerate }) {
   const [zoom, setZoom] = useState(1);
   const [tooltip, setTooltip] = useState(null);
   const treeRef = useRef(null);
   const meta = TYPE_META[type];
+
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
   const zoomIn = () => setZoom((z) => Math.min(z + 0.1, 1.6));
   const zoomOut = () => setZoom((z) => Math.max(z - 0.1, 0.4));
@@ -513,6 +655,30 @@ function LogicTreeView({ data, type, situation, onReset, onRegenerate }) {
           </div>
         </div>
         <div className="toolbar-sep" />
+
+        {/* Download Menu */}
+        <div className="download-wrapper">
+          <button
+            className="toolbar-btn download-trigger"
+            onClick={() => setShowDownloadMenu((v) => !v)}
+          >
+            📥 다운로드 ▾
+          </button>
+          {showDownloadMenu && (
+            <div className="download-menu">
+              <button onClick={() => { downloadWord(data, situation, meta); setShowDownloadMenu(false); }}>
+                📝 Word (.doc)
+              </button>
+              <button onClick={() => { downloadPDF(data, situation, meta); setShowDownloadMenu(false); }}>
+                📄 PDF (인쇄)
+              </button>
+              <button onClick={() => { downloadMD(data, situation, meta); setShowDownloadMenu(false); }}>
+                📋 Markdown (.md)
+              </button>
+            </div>
+          )}
+        </div>
+
         <button className="toolbar-btn" onClick={onRegenerate}>
           🔄 재생성
         </button>
