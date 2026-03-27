@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 /* ──────────────────────────── CONSTANTS ──────────────────────────── */
 const TYPE_META = {
@@ -31,6 +31,92 @@ const TYPE_META = {
       "예) 고객 재방문율을 현재 25%에서 40%로 6개월 내 향상시켜야 한다.",
   },
 };
+
+const ACCEPTED_TYPES = {
+  "image/png": true,
+  "image/jpeg": true,
+  "image/jpg": true,
+  "image/webp": true,
+  "application/pdf": true,
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+  "application/msword": true,
+};
+
+const FILE_ICONS = {
+  pdf: "📄",
+  doc: "📝",
+  docx: "📝",
+  png: "🖼️",
+  jpg: "🖼️",
+  jpeg: "🖼️",
+  webp: "🖼️",
+};
+
+const MAX_FILES = 10;
+const MAX_TOTAL_SIZE = 15 * 1024 * 1024; // 15MB before compression
+
+/* ──────────────────────────── HELPERS ──────────────────────────── */
+function getFileExt(name) {
+  return name.split(".").pop().toLowerCase();
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function compressImage(file, maxDim = 1200, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          resolve(
+            new File([blob], file.name, { type: "image/jpeg" })
+          );
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file); // fallback to original
+    };
+    img.src = url;
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(",")[1];
+      resolve({
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        data: base64,
+        size: file.size,
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ──────────────────────────── HEADER ──────────────────────────── */
 function Header() {
@@ -116,18 +202,190 @@ function CountSelector({ label, value, min, max, onChange }) {
   );
 }
 
+function FileUploadZone({ files, onFilesAdd, onFileRemove }) {
+  const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFiles = useCallback(
+    (newFiles) => {
+      const validFiles = Array.from(newFiles).filter((f) => {
+        const ext = getFileExt(f.name);
+        return (
+          ACCEPTED_TYPES[f.type] ||
+          ["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx"].includes(ext)
+        );
+      });
+      if (validFiles.length > 0) {
+        onFilesAdd(validFiles);
+      }
+    },
+    [onFilesAdd]
+  );
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+
+  return (
+    <div className="form-group">
+      <label>
+        참고 자료 첨부 <span className="hint">선택사항 · PDF, 이미지, Word 파일 지원 (최대 {MAX_FILES}개)</span>
+      </label>
+
+      {/* Drop Zone */}
+      <div
+        className={`file-dropzone ${isDragging ? "dragging" : ""} ${files.length > 0 ? "has-files" : ""}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+
+        {files.length === 0 ? (
+          <div className="dropzone-empty">
+            <div className="dropzone-icon">📎</div>
+            <div className="dropzone-text">
+              파일을 드래그하여 놓거나 클릭하여 선택하세요
+            </div>
+            <div className="dropzone-hint">
+              PDF, PNG, JPG, Word (.docx) · 최대 {MAX_FILES}개
+            </div>
+          </div>
+        ) : (
+          <div className="dropzone-add-more">
+            <span>+ 파일 추가</span>
+          </div>
+        )}
+      </div>
+
+      {/* File List */}
+      {files.length > 0 && (
+        <div className="file-list">
+          {files.map((file, idx) => {
+            const ext = getFileExt(file.name);
+            const icon = FILE_ICONS[ext] || "📎";
+            const isImage = file.type?.startsWith("image/");
+            return (
+              <div className="file-item" key={idx}>
+                <div className="file-item-icon">
+                  {isImage ? (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt=""
+                      className="file-thumb"
+                    />
+                  ) : (
+                    <span className="file-type-icon">{icon}</span>
+                  )}
+                </div>
+                <div className="file-item-info">
+                  <div className="file-item-name">{file.name}</div>
+                  <div className="file-item-size">{formatFileSize(file.size)}</div>
+                </div>
+                <button
+                  type="button"
+                  className="file-item-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFileRemove(idx);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+          <div className="file-summary">
+            📁 {files.length}개 파일 · 총 {formatFileSize(totalSize)}
+            {totalSize > MAX_TOTAL_SIZE && (
+              <span className="file-warning"> ⚠️ 파일 크기가 큽니다. 이미지는 자동 압축됩니다.</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InputForm({ type, onSubmit, onBack }) {
   const [situation, setSituation] = useState("");
   const [l1Count, setL1Count] = useState(4);
   const [l2Count, setL2Count] = useState(3);
   const [l3Count, setL3Count] = useState(2);
+  const [files, setFiles] = useState([]);
+  const [processing, setProcessing] = useState(false);
   const meta = TYPE_META[type];
 
-  const handleSubmit = (e) => {
+  const handleFilesAdd = useCallback(
+    (newFiles) => {
+      setFiles((prev) => {
+        const combined = [...prev, ...newFiles];
+        return combined.slice(0, MAX_FILES);
+      });
+    },
+    []
+  );
+
+  const handleFileRemove = useCallback((index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!situation.trim()) return;
-    onSubmit(situation.trim(), l1Count, l2Count, l3Count);
+    if (!situation.trim() && files.length === 0) return;
+
+    setProcessing(true);
+
+    try {
+      // Process files: compress images, convert all to base64
+      const processedFiles = [];
+      for (const file of files) {
+        let processedFile = file;
+        if (file.type?.startsWith("image/")) {
+          processedFile = await compressImage(file, 1200, 0.7);
+        }
+        const b64 = await fileToBase64(processedFile);
+        processedFiles.push(b64);
+      }
+
+      onSubmit(situation.trim(), l1Count, l2Count, l3Count, processedFiles);
+    } catch (err) {
+      console.error("File processing error:", err);
+      onSubmit(situation.trim(), l1Count, l2Count, l3Count, []);
+    } finally {
+      setProcessing(false);
+    }
   };
+
+  const canSubmit = (situation.trim() || files.length > 0) && !processing;
 
   return (
     <section className="input-section">
@@ -142,7 +400,7 @@ function InputForm({ type, onSubmit, onBack }) {
         <div className="form-group">
           <label>
             상황 / 이슈 입력
-            <span className="hint">구체적일수록 정확한 결과가 나옵니다</span>
+            <span className="hint">텍스트와 파일을 함께 입력할 수 있습니다</span>
           </label>
           <textarea
             value={situation}
@@ -150,6 +408,12 @@ function InputForm({ type, onSubmit, onBack }) {
             placeholder={meta.placeholder}
           />
         </div>
+
+        <FileUploadZone
+          files={files}
+          onFilesAdd={handleFilesAdd}
+          onFileRemove={handleFileRemove}
+        />
 
         <div className="branch-count-grid">
           <CountSelector label="L1 · 1차 분해(대분류)" value={l1Count} min={2} max={7} onChange={setL1Count} />
@@ -164,9 +428,9 @@ function InputForm({ type, onSubmit, onBack }) {
           <button
             type="submit"
             className="btn-generate"
-            disabled={!situation.trim()}
+            disabled={!canSubmit}
           >
-            🌳 Logic Tree 생성하기
+            {processing ? "📎 파일 처리 중..." : "🌳 Logic Tree 생성하기"}
           </button>
         </div>
       </form>
@@ -175,7 +439,7 @@ function InputForm({ type, onSubmit, onBack }) {
 }
 
 /* ──────────────────────────── STEP 3: LOADING ──────────────────────────── */
-function LoadingScreen({ type }) {
+function LoadingScreen({ type, hasFiles }) {
   const meta = TYPE_META[type];
   return (
     <section className="loading-section">
@@ -184,7 +448,9 @@ function LoadingScreen({ type }) {
         {meta.icon} {meta.title} Logic Tree 생성 중...
       </div>
       <div className="loading-sub">
-        AI가 MECE 원칙에 따라 구조화하고 있습니다
+        {hasFiles
+          ? "첨부 파일을 분석하고 MECE 원칙에 따라 구조화하고 있습니다"
+          : "AI가 MECE 원칙에 따라 구조화하고 있습니다"}
       </div>
     </section>
   );
@@ -274,7 +540,7 @@ function LogicTreeView({ data, type, situation, onReset, onRegenerate }) {
             onClick={() =>
               showTip({
                 title: `🚨 ${data.root.label}`,
-                desc: situation,
+                desc: situation || "(첨부 파일 기반 분석)",
                 extra: data.root.tag,
               })
             }
@@ -394,6 +660,7 @@ export default function Home() {
   const [l1Count, setL1Count] = useState(4);
   const [l2Count, setL2Count] = useState(3);
   const [l3Count, setL3Count] = useState(2);
+  const [filesForRegenerate, setFilesForRegenerate] = useState([]);
   const [treeData, setTreeData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -402,11 +669,12 @@ export default function Home() {
     setStep("input");
   };
 
-  const handleGenerate = async (sit, c1, c2, c3) => {
+  const handleGenerate = async (sit, c1, c2, c3, files = []) => {
     setSituation(sit);
     setL1Count(c1);
     setL2Count(c2);
     setL3Count(c3);
+    setFilesForRegenerate(files);
     setStep("loading");
     setError(null);
 
@@ -414,7 +682,14 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ situation: sit, type, l1Count: c1, l2Count: c2, l3Count: c3 }),
+        body: JSON.stringify({
+          situation: sit,
+          type,
+          l1Count: c1,
+          l2Count: c2,
+          l3Count: c3,
+          files: files,
+        }),
       });
 
       const json = await res.json();
@@ -432,7 +707,7 @@ export default function Home() {
   };
 
   const handleRegenerate = () => {
-    handleGenerate(situation, l1Count, l2Count, l3Count);
+    handleGenerate(situation, l1Count, l2Count, l3Count, filesForRegenerate);
   };
 
   const handleReset = () => {
@@ -442,6 +717,7 @@ export default function Home() {
     setL1Count(4);
     setL2Count(3);
     setL3Count(2);
+    setFilesForRegenerate([]);
     setTreeData(null);
   };
 
@@ -459,7 +735,9 @@ export default function Home() {
         />
       )}
 
-      {step === "loading" && <LoadingScreen type={type} />}
+      {step === "loading" && (
+        <LoadingScreen type={type} hasFiles={filesForRegenerate.length > 0} />
+      )}
 
       {step === "result" && treeData && (
         <LogicTreeView
