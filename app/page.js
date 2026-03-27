@@ -88,15 +88,45 @@ function TypeSelector({ onSelect }) {
 }
 
 /* ──────────────────────────── STEP 2: INPUT FORM ──────────────────────────── */
+function CountSelector({ label, value, min, max, onChange }) {
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="count-selector">
+        <button
+          type="button"
+          className="count-btn"
+          disabled={value <= min}
+          onClick={() => onChange(Math.max(min, value - 1))}
+        >
+          −
+        </button>
+        <div className="count-display">{value}</div>
+        <button
+          type="button"
+          className="count-btn"
+          disabled={value >= max}
+          onClick={() => onChange(Math.min(max, value + 1))}
+        >
+          +
+        </button>
+        <span className="count-label">개 ({min}~{max}개 선택 가능)</span>
+      </div>
+    </div>
+  );
+}
+
 function InputForm({ type, onSubmit, onBack }) {
   const [situation, setSituation] = useState("");
   const [l1Count, setL1Count] = useState(4);
+  const [l2Count, setL2Count] = useState(3);
+  const [l3Count, setL3Count] = useState(2);
   const meta = TYPE_META[type];
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!situation.trim()) return;
-    onSubmit(situation.trim(), l1Count);
+    onSubmit(situation.trim(), l1Count, l2Count, l3Count);
   };
 
   return (
@@ -121,28 +151,10 @@ function InputForm({ type, onSubmit, onBack }) {
           />
         </div>
 
-        <div className="form-group">
-          <label>1차 분해(대분류) 카테고리 수</label>
-          <div className="count-selector">
-            <button
-              type="button"
-              className="count-btn"
-              disabled={l1Count <= 2}
-              onClick={() => setL1Count((c) => Math.max(2, c - 1))}
-            >
-              −
-            </button>
-            <div className="count-display">{l1Count}</div>
-            <button
-              type="button"
-              className="count-btn"
-              disabled={l1Count >= 7}
-              onClick={() => setL1Count((c) => Math.min(7, c + 1))}
-            >
-              +
-            </button>
-            <span className="count-label">개 (2~7개 선택 가능)</span>
-          </div>
+        <div className="branch-count-grid">
+          <CountSelector label="L1 · 1차 분해(대분류)" value={l1Count} min={2} max={7} onChange={setL1Count} />
+          <CountSelector label="L2 · 2차 분해(중분류)" value={l2Count} min={2} max={5} onChange={setL2Count} />
+          <CountSelector label="L3 · 3차 분해(소분류)" value={l3Count} min={2} max={4} onChange={setL3Count} />
         </div>
 
         <div className="btn-row">
@@ -336,6 +348,9 @@ function LogicTreeView({ data, type, situation, onReset, onRegenerate }) {
                               }
                             >
                               <div className="node-label">{l3.label}</div>
+                              {l3.description && (
+                                <div className="node-desc">{l3.description}</div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -377,6 +392,8 @@ export default function Home() {
   const [type, setType] = useState("");
   const [situation, setSituation] = useState("");
   const [l1Count, setL1Count] = useState(4);
+  const [l2Count, setL2Count] = useState(3);
+  const [l3Count, setL3Count] = useState(2);
   const [treeData, setTreeData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -385,9 +402,11 @@ export default function Home() {
     setStep("input");
   };
 
-  const handleGenerate = async (sit, count) => {
+  const handleGenerate = async (sit, c1, c2, c3) => {
     setSituation(sit);
-    setL1Count(count);
+    setL1Count(c1);
+    setL2Count(c2);
+    setL3Count(c3);
     setStep("loading");
     setError(null);
 
@@ -395,7 +414,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ situation: sit, type, l1Count: count }),
+        body: JSON.stringify({ situation: sit, type, l1Count: c1, l2Count: c2, l3Count: c3 }),
       });
 
       const json = await res.json();
@@ -413,7 +432,7 @@ export default function Home() {
   };
 
   const handleRegenerate = () => {
-    handleGenerate(situation, l1Count);
+    handleGenerate(situation, l1Count, l2Count, l3Count);
   };
 
   const handleReset = () => {
@@ -421,6 +440,8 @@ export default function Home() {
     setType("");
     setSituation("");
     setL1Count(4);
+    setL2Count(3);
+    setL3Count(2);
     setTreeData(null);
   };
 

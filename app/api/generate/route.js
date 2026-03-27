@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(request) {
   try {
-    const { situation, type, l1Count } = await request.json();
+    const { situation, type, l1Count, l2Count = 3, l3Count = 2 } = await request.json();
 
     if (!situation || !type || !l1Count) {
       return NextResponse.json({ error: "필수 입력값이 누락되었습니다." }, { status: 400 });
@@ -55,14 +55,15 @@ ${situation}
 
 [요구사항]
 - L1(1차 분해) 노드의 수: 정확히 ${l1Count}개
-- 각 L1 노드 아래에 L2(2차 분해) 노드: 정확히 3개씩
-- 각 L2 노드 아래에 L3(3차 분해) 노드: 정확히 2개씩
+- 각 L1 노드 아래에 L2(2차 분해) 노드: 정확히 ${l2Count}개씩
+- 각 L2 노드 아래에 L3(3차 분해) 노드: 정확히 ${l3Count}개씩
 - 모든 내용은 한국어로 작성
 - MECE(Mutually Exclusive, Collectively Exhaustive) 원칙 준수
 - label은 간결하게 (한국어 기준 2~8자)
 - subLabel은 질문형 또는 보조설명 (10자 이내)
 - description은 2~3문장의 상세 설명
 - 아이콘은 각 L1 카테고리에 적합한 이모지 1개
+- L3 노드의 description은 3~4문장으로 구체적이고 설명적으로 작성하세요. 실무에서 바로 활용할 수 있는 구체적 내용, 확인 방법, 기대효과 등을 포함하세요.
 
 다음 JSON 구조로만 응답하세요. JSON 외의 텍스트는 절대 포함하지 마세요:
 {
